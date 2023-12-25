@@ -10,7 +10,8 @@ CAR_MODEL = 'Civic' # specific model
 ZIP = '10001' # input as string
 
 # FOLLOW README TO GET YOUR OWN AUTHORIZATION TOKEN AND SET TO VARIABLE BELOW
-AUTH = 'YOUR AUTH TOKEN HERE'
+AUTH = 'eyJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJac000bUdyRi1tTmpyOC10UjhLRmZBIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2FyZmF4LmNvbSIsInN1YiI6IkNyZWRpdGNhcm1vdG9yc2xsY0BnbWFpbC5jb20iLCJleHAiOjE3MDYwNTg4OTQsImlhdCI6MTcwMzQ2Njg5NCwidXBwIjp0cnVlLCJ1Y2wiOmZhbHNlLCJpZGVudGlmaWVycyI6eyJjb21wYW55X2NvZGUiOiIwTDkzUFM2R1JDIiwic3Vic2NyaWJlcl9pZCI6IjBMOTNQUzZHUkMiLCJsb2NhdGlvbl9pZCI6MTIzODM5OCwiYWNjb3VudF9udW1iZXIiOjAsInNhbGVzZm9yY2VfaWQiOiIwMDExTDAwMDAyWktBbVVRQVgiLCJvbmVfYWNjb3VudF9pZCI6MzA0NzAwODEzLCJkZWFsZXJfdXNlcl9pZCI6MTI3NDMzNX0sInJlc291cmNlc19vd25lZCI6eyJzdWJzY3JpYmVyX2lkIjpbIjBMOTNQUzZHUkMiXSwidXNlcl9pZCI6WyJDcmVkaXRjYXJtb3RvcnNsbGNAZ21haWwuY29tIl0sImxvY2F0aW9uX2lkIjpbMTIzODM5OF19LCJhY2NvdW50X3R5cGUiOiJERUFMRVIifQ.O7X-YsJtZrk9A0kI2tflJmoegBhAQhPWO833AYI7ehk
+'
 
 def request_carfax(zip_code, car_make, car_model):
     scraped_results = []
@@ -39,7 +40,8 @@ def request_carfax(zip_code, car_make, car_model):
             'x-cfx-alternator': 'Qhids3yPOM5IZ7U6FyGoXSBbcI2q+VnCGv+8KEy6twk=',
             'x-cfx-dynamo': '1631218927918',
             'sec-ch-ua-mobile': '?0',
-            'authorization': AUTH,
+            'authorization': AUTH <eyJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJac000bUdyRi1tTmpyOC10UjhLRmZBIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2FyZmF4LmNvbSIsInN1YiI6IkNyZWRpdGNhcm1vdG9yc2xsY0BnbWFpbC5jb20iLCJleHAiOjE3MDYwNTg4OTQsImlhdCI6MTcwMzQ2Njg5NCwidXBwIjp0cnVlLCJ1Y2wiOmZhbHNlLCJpZGVudGlmaWVycyI6eyJjb21wYW55X2NvZGUiOiIwTDkzUFM2R1JDIiwic3Vic2NyaWJlcl9pZCI6IjBMOTNQUzZHUkMiLCJsb2NhdGlvbl9pZCI6MTIzODM5OCwiYWNjb3VudF9udW1iZXIiOjAsInNhbGVzZm9yY2VfaWQiOiIwMDExTDAwMDAyWktBbVVRQVgiLCJvbmVfYWNjb3VudF9pZCI6MzA0NzAwODEzLCJkZWFsZXJfdXNlcl9pZCI6MTI3NDMzNX0sInJlc291cmNlc19vd25lZCI6eyJzdWJzY3JpYmVyX2lkIjpbIjBMOTNQUzZHUkMiXSwidXNlcl9pZCI6WyJDcmVkaXRjYXJtb3RvcnNsbGNAZ21haWwuY29tIl0sImxvY2F0aW9uX2lkIjpbMTIzODM5OF19LCJhY2NvdW50X3R5cGUiOiJERUFMRVIifQ.O7X-YsJtZrk9A0kI2tflJmoegBhAQhPWO833AYI7ehk>
+,
             'accept': 'application/json',
             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36',
             'sec-ch-ua-platform': '"macOS"',
