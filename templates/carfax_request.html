@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vehicle History Request | Kok-Car</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">KC</span>
+      <span class="brand-name">Kok-Car</span>
+      <span class="brand-sub">Vehicle History Request</span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab-btn active" data-tab="request" role="tab">New Request</button>
+      <button class="tab-btn" data-tab="history" role="tab">Request History</button>
+    </nav>
+  </header>
+
+  <main class="layout">
+
+    <!-- ===================== NEW REQUEST TAB ===================== -->
+    <section class="tab-panel active" id="tab-request">
+
+      <div class="grid">
+
+        <!-- Panel: Vehicle Lookup -->
+        <section class="panel" id="panel-lookup">
+          <header class="panel-header">
+            <h2>1. Vehicle Lookup</h2>
+            <p class="panel-hint">Enter a 17-character VIN to decode the vehicle.</p>
+          </header>
+          <div class="panel-body">
+            <label for="vin-input">VIN</label>
+            <div class="input-row">
+              <input id="vin-input" maxlength="17" placeholder="e.g. 1HGCM82633A004352" autocomplete="off" />
+              <button id="decode-btn" class="btn btn-secondary" type="button">Decode</button>
+            </div>
+            <p class="field-error" id="vin-error"></p>
+
+            <div class="vehicle-summary" id="vehicle-summary" hidden>
+              <div class="vs-row"><span>Year</span><strong id="vs-year">—</strong></div>
+              <div class="vs-row"><span>Make</span><strong id="vs-make">—</strong></div>
+              <div class="vs-row"><span>Model</span><strong id="vs-model">—</strong></div>
+              <div class="vs-row"><span>Trim</span><strong id="vs-trim">—</strong></div>
+              <div class="vs-row"><span>Body</span><strong id="vs-body">—</strong></div>
+              <div class="vs-row"><span>Engine</span><strong id="vs-engine">—</strong></div>
+              <div class="vs-row"><span>Fuel</span><strong id="vs-fuel">—</strong></div>
+              <div class="vs-row"><span>Plant Country</span><strong id="vs-plant">—</strong></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Panel: Requester Info -->
+        <section class="panel" id="panel-requester">
+          <header class="panel-header">
+            <h2>2. Requester Details</h2>
+            <p class="panel-hint">Who is this report for?</p>
+          </header>
+          <div class="panel-body">
+            <label for="requester-name">Full name</label>
+            <input id="requester-name" placeholder="Jane Smith" autocomplete="name" />
+            <p class="field-error" id="name-error"></p>
+
+            <label for="requester-email">Email</label>
+            <input id="requester-email" type="email" placeholder="jane@example.com" autocomplete="email" />
+            <p class="field-error" id="email-error"></p>
+          </div>
+        </section>
+
+        <!-- Panel: Report Options -->
+        <section class="panel" id="panel-options">
+          <header class="panel-header">
+            <h2>3. Report Sections</h2>
+            <p class="panel-hint">Choose what to include in the report.</p>
+          </header>
+          <div class="panel-body">
+            <div class="options-list">
+              {% for opt in report_options %}
+              <label class="option-item">
+                <input type="checkbox" class="option-checkbox" value="{{ opt.key }}" checked />
+                <span>{{ opt.label }}</span>
+              </label>
+              {% endfor %}
+            </div>
+            <p class="field-error" id="options-error"></p>
+          </div>
+        </section>
+
+        <!-- Panel: Submit / Status -->
+        <section class="panel panel-submit" id="panel-submit">
+          <header class="panel-header">
+            <h2>4. Submit Request</h2>
+            <p class="panel-hint">Generates the report and saves it to your history.</p>
+          </header>
+          <div class="panel-body">
+            <button id="submit-btn" class="btn btn-primary" type="button">Request Vehicle History Report</button>
+            <div class="status-line" id="status-line" hidden>
+              <span class="spinner" id="spinner"></span>
+              <span id="status-text">Requesting report…</span>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- Panel: Results (full width, appears after submission) -->
+      <section class="panel panel-results" id="panel-results" hidden>
+        <header class="panel-header">
+          <h2>Report Results</h2>
+          <span class="badge badge-demo" id="demo-badge" hidden>Demo data</span>
+        </header>
+        <div class="panel-body" id="results-body">
+          <!-- populated by JS -->
+        </div>
+      </section>
+
+    </section>
+
+    <!-- ===================== HISTORY TAB ===================== -->
+    <section class="tab-panel" id="tab-history">
+      <section class="panel panel-history">
+        <header class="panel-header">
+          <h2>Request History</h2>
+          <button id="refresh-history-btn" class="btn btn-secondary" type="button">Refresh</button>
+        </header>
+        <div class="panel-body">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>VIN</th>
+                <th>Vehicle</th>
+                <th>Requester</th>
+                <th>Sections</th>
+                <th>Accidents</th>
+                <th>Owners</th>
+                <th>Title</th>
+                <th>Requested</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <tr><td colspan="9" class="empty-row">No requests yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+  </main>
+
+  <footer class="disclaimer">
+    Accident, service, ownership, title, and odometer sections use demo data
+    generated locally for preview purposes — this app does not call Carfax's
+    proprietary systems. VIN decode (year/make/model/engine) is real, via the
+    free NHTSA vPIC API. Connect a licensed vehicle-history provider before
+    using this page in production.
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

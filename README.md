@@ -10,6 +10,32 @@
 
 
 
+## Vehicle History Request Page
+
+A Flask web app (`app.py`) provides a "Request Vehicle History Report" page at `/`
+with full panels: VIN lookup, requester details, report section options, a
+submit/status panel, a results panel, and a request-history panel backed by a
+local SQLite database.
+
+VIN decoding (year/make/model/trim/engine/etc.) is real, powered by the free,
+keyless [NHTSA vPIC API](https://vpic.nhtsa.dot.gov/api/). Carfax has no public
+API for accident/service/ownership/title history, so those sections are
+generated as clearly-labeled **demo data**, deterministically derived from the
+VIN. Swap `generate_history_report()` in `app.py` for a licensed vehicle-history
+provider (e.g. Carfax for Dealers, AutoCheck, NMVTIS) before using this in
+production.
+
+### Run it
+
+```
+pip install -r requirements.txt
+python app.py
+```
+
+Then open http://127.0.0.1:5000/.
+
+---
+
 ## Usage Instructions 
 
 (Google Chrome only; only tested on Mac OS) 

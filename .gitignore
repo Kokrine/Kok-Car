@@ -1,3 +1,7 @@
 scrapes/*
 !scrapes/.gitkeep
 cars_list
+
+__pycache__/
+*.pyc
+carfax_requests.db
