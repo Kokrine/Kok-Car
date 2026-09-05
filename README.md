@@ -19,11 +19,14 @@ local SQLite database.
 
 VIN decoding (year/make/model/trim/engine/etc.) is real, powered by the free,
 keyless [NHTSA vPIC API](https://vpic.nhtsa.dot.gov/api/). Carfax has no public
-API for accident/service/ownership/title history, so those sections are
-generated as clearly-labeled **demo data**, deterministically derived from the
-VIN. Swap `generate_history_report()` in `app.py` for a licensed vehicle-history
-provider (e.g. Carfax for Dealers, AutoCheck, NMVTIS) before using this in
-production.
+API for accident/service/ownership/title history, so those sections come from
+one of two sources:
+
+1. **Your own Telegram Carfax bot**, if you point the page at it (see below).
+2. A deterministic **demo fallback**, seeded from the VIN, used whenever the
+   bot isn't configured or doesn't respond in time. Every report and every row
+   in the request-history panel is labeled Demo or Live so it's always clear
+   which one you're looking at.
 
 ### Run it
 
@@ -33,6 +36,72 @@ python app.py
 ```
 
 Then open http://127.0.0.1:5000/.
+
+### Connecting your Telegram Carfax bot (optional)
+
+If your bot already fetches real reports using your own dealer account, you
+can point this page at it instead of using demo data. The page never talks to
+Telegram directly — it makes one local HTTP call to your bot each time someone
+submits a request, so there's no polling, no chat IDs, and no waiting on a
+Telegram round-trip.
+
+**1. Add a small endpoint to your existing bot script.** It needs to accept a
+VIN and the requested report sections, and return them in this shape (only
+include the sections that were requested):
+
+```python
+# Add this to your bot's own process (Flask shown; any framework works).
+from flask import Flask, jsonify, request
+
+bot_api = Flask(__name__)
+BOT_SECRET = "choose-a-long-random-string"  # must match CARFAX_BOT_SECRET below
+
+@bot_api.route("/carfax-lookup", methods=["POST"])
+def carfax_lookup():
+    if request.headers.get("X-Bot-Secret") != BOT_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+
+    payload = request.get_json()
+    vin = payload["vin"]
+    options = payload["options"]  # e.g. ["accidents", "title"]
+
+    # Call whatever function your bot already uses to pull a real report
+    # for `vin` using your dealer session, then shape the result like this:
+    return jsonify({
+        "accidents": {"count": 1, "events": [
+            {"date": "2022-03", "severity": "Minor", "description": "Front bumper"}
+        ]},
+        "title": {"status": "Clean", "lien_on_record": False},
+        # ...include "service", "ownership", "odometer" the same way if requested
+    })
+
+bot_api.run(port=8000)  # run this alongside your Telegram bot process
+```
+
+**2. Point the web page at it** by setting environment variables before
+starting `app.py`:
+
+```
+# Windows (cmd.exe)
+set CARFAX_BOT_URL=http://127.0.0.1:8000/carfax-lookup
+set CARFAX_BOT_SECRET=choose-a-long-random-string
+python app.py
+
+# Git Bash / macOS / Linux
+export CARFAX_BOT_URL=http://127.0.0.1:8000/carfax-lookup
+export CARFAX_BOT_SECRET=choose-a-long-random-string
+python app.py
+```
+
+That's it — submit a request on the page and it will call your bot first;
+the results panel and history table will show **Live (bot)** instead of
+**Demo**. If the bot is down or the URL isn't set, requests still work using
+demo data, so the page is never broken by the bot being offline.
+
+Since this reuses your own already-authorized dealer session rather than a
+public API, keep `CARFAX_BOT_SECRET` private and don't expose the bot's port
+to the public internet — it should only be reachable from `app.py` on the
+same machine (or your own private network).
 
 ---
 

@@ -9,10 +9,38 @@ VIN decoding (year/make/model/engine/etc.) is real, powered by the free
 NHTSA vPIC API (no key required: https://vpic.nhtsa.dot.gov/api/).
 
 Carfax itself does not offer a public API for accident/service/ownership
-history, so those sections are generated as clearly-labeled DEMO data,
-deterministically derived from the VIN so the same VIN always previews the
-same way. Swap `generate_history_report()` for a real vendor integration
-(Carfax for Dealers, AutoCheck, NMVTIS, etc.) once you have credentials.
+history. This app supports two sources for that data:
+
+1. Your own Telegram Carfax bot, if it exposes a local HTTP endpoint (see
+   CARFAX_BOT_URL below). This lets you reuse your bot's existing, already
+   -authorized dealer session instead of duplicating that logic here.
+2. A deterministic DEMO fallback, seeded from the VIN, used whenever the
+   bot endpoint is not configured or is unreachable.
+
+To connect your bot, set these environment variables before running the app:
+
+    CARFAX_BOT_URL     e.g. http://127.0.0.1:8000/carfax-lookup
+    CARFAX_BOT_SECRET  a shared secret sent as the X-Bot-Secret header
+                        (set the same value in your bot; optional but
+                        recommended since the endpoint returns real data)
+    CARFAX_BOT_TIMEOUT seconds to wait before falling back to demo data
+                        (default 10)
+
+Your bot's endpoint should accept POST {"vin": "...", "options": [...]}
+and return JSON shaped like generate_history_report()'s output below (only
+the requested sections are required):
+
+    {
+      "accidents": {"count": 1, "events": [{"date": "2022-03",
+                     "severity": "Minor", "description": "..."}]},
+      "service":   {"count": 4, "records": [{"date": "2023-01",
+                     "mileage": 32000, "service": "Oil change"}]},
+      "ownership": {"count": 2, "owners": [{"owner_number": 1,
+                     "type": "Personal", "estimated_length_years": 3}]},
+      "title":     {"status": "Clean", "lien_on_record": false},
+      "odometer":  {"rollback_detected": false,
+                     "last_reported_mileage": 54210}
+    }
 """
 import hashlib
 import os
@@ -26,6 +54,10 @@ app = Flask(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "carfax_requests.db")
 NHTSA_DECODE_URL = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json"
+
+CARFAX_BOT_URL = os.environ.get("CARFAX_BOT_URL", "").strip()
+CARFAX_BOT_SECRET = os.environ.get("CARFAX_BOT_SECRET", "").strip()
+CARFAX_BOT_TIMEOUT = float(os.environ.get("CARFAX_BOT_TIMEOUT", "10"))
 
 REPORT_OPTIONS = [
     {"key": "accidents", "label": "Accident History"},
@@ -68,6 +100,7 @@ def init_db():
             accident_count INTEGER,
             owner_count INTEGER,
             title_status TEXT,
+            data_source TEXT NOT NULL DEFAULT 'demo',
             created_at TEXT NOT NULL
         )
         """
@@ -99,6 +132,39 @@ def decode_vin(vin):
         "plant_country": field("PlantCountry"),
         "error_text": field("ErrorText"),
     }
+
+
+def fetch_bot_report(vin, options):
+    """
+    Try the user's own Carfax bot (real, dealer-authorized data) over a local
+    HTTP call. Returns the bot's JSON report on success, or None if the bot
+    isn't configured, unreachable, or returns an error -- callers should fall
+    back to generate_history_report() in that case.
+    """
+    if not CARFAX_BOT_URL:
+        return None
+
+    headers = {"Content-Type": "application/json"}
+    if CARFAX_BOT_SECRET:
+        headers["X-Bot-Secret"] = CARFAX_BOT_SECRET
+
+    try:
+        response = requests.post(
+            CARFAX_BOT_URL,
+            json={"vin": vin, "options": options},
+            headers=headers,
+            timeout=CARFAX_BOT_TIMEOUT,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    data["is_demo_data"] = False
+    return data
 
 
 def generate_history_report(vin, options):
@@ -210,15 +276,16 @@ def api_request_report():
     except requests.RequestException as exc:
         return jsonify({"error": f"VIN decode service unavailable: {exc}"}), 502
 
-    history = generate_history_report(vin, options)
+    history = fetch_bot_report(vin, options) or generate_history_report(vin, options)
 
     db = get_db()
     cursor = db.execute(
         """
         INSERT INTO requests
             (vin, year, make, model, trim, requester_name, requester_email,
-             options, status, accident_count, owner_count, title_status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?)
+             options, status, accident_count, owner_count, title_status,
+             data_source, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?)
         """,
         (
             vin,
@@ -232,6 +299,7 @@ def api_request_report():
             history.get("accidents", {}).get("count"),
             history.get("ownership", {}).get("count"),
             history.get("title", {}).get("status"),
+            "demo" if history.get("is_demo_data") else "bot",
             datetime.now(timezone.utc).isoformat(),
         ),
     )

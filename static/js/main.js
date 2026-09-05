@@ -85,7 +85,16 @@
   }
 
   function renderReport(vehicle, history) {
-    demoBadge.hidden = !history.is_demo_data;
+    demoBadge.hidden = false;
+    if (history.is_demo_data) {
+      demoBadge.textContent = "Demo data";
+      demoBadge.classList.remove("badge-live");
+      demoBadge.classList.add("badge-demo");
+    } else {
+      demoBadge.textContent = "Live data (your bot)";
+      demoBadge.classList.remove("badge-demo");
+      demoBadge.classList.add("badge-live");
+    }
     const cards = [];
 
     if (history.accidents) {
@@ -217,12 +226,12 @@
 
   // ---------- History ----------
   async function loadHistory() {
-    historyTbody.innerHTML = `<tr><td colspan="9" class="empty-row">Loading…</td></tr>`;
+    historyTbody.innerHTML = `<tr><td colspan="10" class="empty-row">Loading…</td></tr>`;
     try {
       const res = await fetch("/api/history");
       const rows = await res.json();
       if (!rows.length) {
-        historyTbody.innerHTML = `<tr><td colspan="9" class="empty-row">No requests yet.</td></tr>`;
+        historyTbody.innerHTML = `<tr><td colspan="10" class="empty-row">No requests yet.</td></tr>`;
         return;
       }
       historyTbody.innerHTML = rows
@@ -237,12 +246,13 @@
           <td>${r.accident_count ?? "—"}</td>
           <td>${r.owner_count ?? "—"}</td>
           <td>${r.title_status ?? "—"}</td>
+          <td>${r.data_source === "bot" ? "Live (bot)" : "Demo"}</td>
           <td>${new Date(r.created_at).toLocaleString()}</td>
         </tr>`
         )
         .join("");
     } catch (err) {
-      historyTbody.innerHTML = `<tr><td colspan="9" class="empty-row">Could not load history.</td></tr>`;
+      historyTbody.innerHTML = `<tr><td colspan="10" class="empty-row">Could not load history.</td></tr>`;
     }
   }
   refreshHistoryBtn.addEventListener("click", loadHistory);
