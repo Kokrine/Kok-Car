@@ -23,6 +23,8 @@
   const historyTbody = document.getElementById("history-tbody");
   const refreshHistoryBtn = document.getElementById("refresh-history-btn");
 
+  const BOT_CONFIGURED = !!document.querySelector(".mode-live");
+
   let lastDecodedVehicle = null;
 
   // ---------- Tabs ----------
@@ -84,7 +86,7 @@
     return Array.from(document.querySelectorAll(".option-checkbox:checked")).map((el) => el.value);
   }
 
-  function renderReport(vehicle, history) {
+  function renderReport(vehicle, history, pdfUrl) {
     demoBadge.hidden = false;
     if (history.is_demo_data) {
       demoBadge.textContent = "Demo data";
@@ -95,6 +97,25 @@
       demoBadge.classList.remove("badge-demo");
       demoBadge.classList.add("badge-live");
     }
+    if (history.pdf_available) {
+      resultsBody.innerHTML = `
+        <p style="margin-top:0;color:var(--text-muted);font-size:13px;">
+          ${vehicle.year || ""} ${vehicle.make || ""} ${vehicle.model || ""} ${vehicle.trim || ""} · VIN ${vehicle.vin}
+        </p>
+        <div class="pdf-panel">
+          <span class="pdf-panel-icon">📄</span>
+          <div class="pdf-panel-info">
+            <h3>Carfax report ready</h3>
+            <p>Real report fetched live through your connected Carfax bot.</p>
+          </div>
+          <a class="btn btn-primary" href="${pdfUrl}" target="_blank" rel="noopener">Open PDF</a>
+        </div>
+      `;
+      resultsPanel.hidden = false;
+      resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
     const cards = [];
 
     if (history.accidents) {
@@ -185,7 +206,10 @@
 
     submitBtn.disabled = true;
     statusLine.hidden = false;
-    statusText.textContent = "Requesting report…";
+    statusText.textContent = BOT_CONFIGURED
+      ? "Requesting live report — this can take a couple of minutes…"
+      : "Requesting report…";
+    let keepStatusVisible = false;
 
     try {
       const res = await fetch("/api/request-report", {
@@ -200,38 +224,45 @@
       });
       const data = await res.json();
       if (!res.ok) {
-        statusText.textContent = "Request failed.";
         if (data.errors) {
+          statusText.textContent = "Request failed.";
           if (data.errors.vin) vinError.textContent = data.errors.vin;
           if (data.errors.requester_name) nameError.textContent = data.errors.requester_name;
           if (data.errors.requester_email) emailError.textContent = data.errors.requester_email;
           if (data.errors.options) optionsError.textContent = data.errors.options;
         } else if (data.error) {
-          vinError.textContent = data.error;
+          // A real bot/report failure (not a field validation issue) -- keep
+          // it visible in the status line rather than auto-hiding, since
+          // this means the live report genuinely failed.
+          statusText.textContent = data.error;
+          keepStatusVisible = true;
         }
         return;
       }
       statusText.textContent = "Report ready.";
-      renderReport(data.vehicle, data.history);
+      renderReport(data.vehicle, data.history, data.pdf_url);
     } catch (err) {
       statusText.textContent = "Network error requesting report.";
+      keepStatusVisible = true;
     } finally {
       submitBtn.disabled = false;
-      setTimeout(() => {
-        statusLine.hidden = true;
-      }, 2500);
+      if (!keepStatusVisible) {
+        setTimeout(() => {
+          statusLine.hidden = true;
+        }, 2500);
+      }
     }
   }
   submitBtn.addEventListener("click", submitRequest);
 
   // ---------- History ----------
   async function loadHistory() {
-    historyTbody.innerHTML = `<tr><td colspan="10" class="empty-row">Loading…</td></tr>`;
+    historyTbody.innerHTML = `<tr><td colspan="11" class="empty-row">Loading…</td></tr>`;
     try {
       const res = await fetch("/api/history");
       const rows = await res.json();
       if (!rows.length) {
-        historyTbody.innerHTML = `<tr><td colspan="10" class="empty-row">No requests yet.</td></tr>`;
+        historyTbody.innerHTML = `<tr><td colspan="11" class="empty-row">No requests yet.</td></tr>`;
         return;
       }
       historyTbody.innerHTML = rows
@@ -247,12 +278,13 @@
           <td>${r.owner_count ?? "—"}</td>
           <td>${r.title_status ?? "—"}</td>
           <td>${r.data_source === "bot" ? "Live (bot)" : "Demo"}</td>
+          <td>${r.pdf_filename ? `<a href="/reports/${r.pdf_filename}" target="_blank" rel="noopener">Download PDF</a>` : "—"}</td>
           <td>${new Date(r.created_at).toLocaleString()}</td>
         </tr>`
         )
         .join("");
     } catch (err) {
-      historyTbody.innerHTML = `<tr><td colspan="10" class="empty-row">Could not load history.</td></tr>`;
+      historyTbody.innerHTML = `<tr><td colspan="11" class="empty-row">Could not load history.</td></tr>`;
     }
   }
   refreshHistoryBtn.addEventListener("click", loadHistory);

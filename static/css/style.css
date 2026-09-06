@@ -53,6 +53,16 @@ body {
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
+.mode-banner {
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  border: 1px solid transparent;
+}
+.mode-live { background: rgba(26,158,92,0.1); border-color: rgba(26,158,92,0.3); color: #106b3e; }
+.mode-demo { background: rgba(245,166,35,0.1); border-color: rgba(245,166,35,0.3); color: #a15c00; }
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -140,6 +150,21 @@ input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px
 .badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.03em; }
 .badge-demo { background: rgba(245,166,35,0.15); color: #a15c00; }
 .badge-live { background: rgba(26,158,92,0.15); color: var(--success); }
+
+.pdf-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  background: rgba(26,158,92,0.06);
+}
+.pdf-panel-icon { font-size: 32px; }
+.pdf-panel-info { flex: 1; }
+.pdf-panel-info h3 { margin: 0 0 4px; font-size: 15px; }
+.pdf-panel-info p { margin: 0; font-size: 13px; color: var(--text-muted); }
 
 .report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
 .report-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
