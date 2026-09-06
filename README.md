@@ -39,6 +39,17 @@ pip install -r requirements.txt
 python app.py
 ```
 
+Configuration (`CARFAX_BOT_URL`, `CARFAX_BOT_SECRET`, etc.) can be set as
+real environment variables, or placed in a `.env` file next to `app.py` —
+it's loaded automatically. Useful extra settings for a real deployment:
+
+    FLASK_HOST   interface to bind (default 127.0.0.1 -- put a reverse
+                 proxy in front rather than binding 0.0.0.0 directly)
+    FLASK_PORT   port to bind (default 5000)
+    FLASK_DEBUG  set to "true" only for local development -- never on a
+                 server reachable by anyone but you (the Werkzeug debugger
+                 allows arbitrary code execution if reachable)
+
 Then open http://127.0.0.1:5000/.
 
 ### Connecting your Carfax bot (optional)

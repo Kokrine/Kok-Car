@@ -47,7 +47,10 @@ import uuid
 from datetime import datetime, timezone
 
 import requests
+from dotenv import load_dotenv
 from flask import Flask, abort, g, jsonify, render_template, request, send_from_directory
+
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -366,4 +369,10 @@ if __name__ == "__main__":
     # CARFAX_BOT_TIMEOUT seconds, and the dev server is single-threaded by
     # default -- without this, one in-flight request would block every
     # other page load (including /api/history).
-    app.run(debug=True, threaded=True)
+    #
+    # debug=True enables Werkzeug's interactive debugger, which allows
+    # arbitrary code execution to anyone who can trigger an unhandled
+    # exception and reach it -- never enable this on a server reachable
+    # by anyone but you. Off by default; set FLASK_DEBUG=true for local dev.
+    debug_mode = os.environ.get("FLASK_DEBUG", "false").strip().lower() == "true"
+    app.run(debug=debug_mode, threaded=True, host=os.environ.get("FLASK_HOST", "127.0.0.1"), port=int(os.environ.get("FLASK_PORT", "5000")))
