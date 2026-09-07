@@ -110,7 +110,10 @@ your own private network).
 `git clone https://github.com/grsahagian/carfax-scraper`
 
 
-2. Install dependencies (requirements.txt)
+2. Install dependencies: `pip install -r requirements-scraper.txt` (this
+   script's own dependencies -- pandas, requests -- are separate from the
+   web app's `requirements.txt` above, so installing one never requires
+   the other)
    
 #### Get Authorization code
 3. Navigate to https://www.carfax.com/cars-for-sale

@@ -1,0 +1,4 @@
+# Only needed for the legacy CLI scraper (main.py), not for the web app
+# (app.py). Install with: pip install -r requirements-scraper.txt
+pandas>=2.0,<3.0
+requests==2.31.0
