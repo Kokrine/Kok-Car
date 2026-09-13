@@ -39,6 +39,14 @@ USER_FACING = {
 # Variables that usually hold an exception.
 EXC_NAMES = {"e", "ex", "exc", "err", "error", "exception"}
 
+# Words that must never reach a user: the source site's name or address.
+# Override with VINPRO_SCRUB_WORDS="word1,word2".
+BLOCKED_WORDS = tuple(
+    w.strip().lower()
+    for w in ("cargopolo," + os.environ.get("VINPRO_SCRUB_WORDS", "")).split(",")
+    if w.strip()
+)
+
 
 @dataclass
 class Finding:
@@ -68,9 +76,24 @@ def _attr_chain(node: ast.AST) -> str:
     return ".".join(reversed(parts))
 
 
+def _blocked_in_call(call: ast.Call) -> str:
+    """The blocked word a user-facing call would print, if any."""
+    for node in ast.walk(call):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            lowered = node.value.lower()
+            for word in BLOCKED_WORDS:
+                if word in lowered:
+                    return word
+    return ""
+
+
 def _mentions_exception(call: ast.Call) -> bool:
     """True when a user-facing call interpolates an exception into its text."""
-    for node in ast.walk(call):
+    return _mentions_exception_expr(call)
+
+
+def _mentions_exception_expr(expr: ast.AST) -> bool:
+    for node in ast.walk(expr):
         if isinstance(node, ast.Name) and node.id in EXC_NAMES:
             return True
         if isinstance(node, ast.Call):
@@ -96,6 +119,9 @@ class BotVisitor(ast.NodeVisitor):
         # Names bound to a launched browser, so b.close() is caught as well
         # as browser.close().
         self.browser_names: set[str] = {"browser"}
+        # Variables holding text built from an exception. A handler often
+        # builds the message first and sends it a line later.
+        self.tainted: set[str] = set()
 
     # -- scope tracking -------------------------------------------------
     def visit_FunctionDef(self, node):  # noqa: N802
@@ -105,9 +131,14 @@ class BotVisitor(ast.NodeVisitor):
         self._visit_func(node)
 
     def _visit_func(self, node):
+        # Tainted names are per function: a variable named `msg` in one
+        # handler says nothing about `msg` in the next.
+        outer_tainted = self.tainted
+        self.tainted = set()
         self.func_stack.append(node)
         self.generic_visit(node)
         self.func_stack.pop()
+        self.tainted = outer_tainted
 
     def _current_func(self):
         return self.func_stack[-1] if self.func_stack else None
@@ -163,7 +194,21 @@ class BotVisitor(ast.NodeVisitor):
                     "delete this; only manager.shutdown() closes the browser",
                 )
 
-        if tail in USER_FACING and _mentions_exception(node):
+        if tail in USER_FACING:
+            word = _blocked_in_call(node)
+            if word:
+                self._add(
+                    node.lineno,
+                    "BRAND",
+                    f"{tail}() shows the text \"{word}\" to the user",
+                    "remove it - users must not learn where the data comes from",
+                )
+
+        sends_exception = _mentions_exception(node) or any(
+            isinstance(a, ast.Name) and a.id in self.tainted
+            for a in list(node.args) + [k.value for k in node.keywords]
+        )
+        if tail in USER_FACING and sends_exception:
             self._add(
                 node.lineno,
                 "LEAK",
@@ -206,6 +251,10 @@ class BotVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Assign(self, node):  # noqa: N802
+        if _mentions_exception_expr(node.value):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    self.tainted.add(t.id)
         if self._is_launch_call(node.value):
             for t in node.targets:
                 if isinstance(t, ast.Name):
@@ -251,7 +300,7 @@ def walk(root: str) -> list[FileReport]:
     return reports
 
 
-ORDER = ["SYNTAX", "LAUNCH", "CLOSE", "LEAK", "SYNC-API", "NO-TIMEOUT"]
+ORDER = ["SYNTAX", "LAUNCH", "CLOSE", "LEAK", "BRAND", "SYNC-API", "NO-TIMEOUT"]
 
 
 def main() -> int:
@@ -263,6 +312,30 @@ def main() -> int:
         print("Is this the bot's directory? Try:")
         print("  grep -rl --include='*.py' -e telegram -e playwright ~ | head")
         return 1
+
+    print(f"\nScanning for {', '.join(BLOCKED_WORDS)} anywhere in the code...")
+    mentions = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+        for name in filenames:
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(dirpath, name)
+            try:
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    for n, line in enumerate(fh, 1):
+                        low = line.lower()
+                        if any(w in low for w in BLOCKED_WORDS):
+                            mentions.append((path, n, line.strip()[:100]))
+            except OSError:
+                continue
+    if mentions:
+        print(f"  {len(mentions)} mention(s) - check each one is log-only, "
+              "never sent to a user:")
+        for path, n, text in mentions[:30]:
+            print(f"    {path}:{n}  {text}")
+    else:
+        print("  none found")
 
     total = 0
     for rep in sorted(reports, key=lambda r: r.path):
