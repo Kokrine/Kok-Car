@@ -99,7 +99,7 @@ installs the module and dependencies, gets Chromium working, writes
 `.env.vinpro`, and prints the exact lines of the bot that still need editing.
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/Kokrine/Kok-Car/claude/report-throwing-issue-smbnnn/deploy/autofix.sh")
+curl -fsSL -o autofix.sh "https://raw.githubusercontent.com/Kokrine/Kok-Car/claude/report-throwing-issue-smbnnn/deploy/autofix.sh" && bash autofix.sh
 ```
 
 Verified end to end against a simulated account, including the path where

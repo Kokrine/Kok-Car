@@ -23,10 +23,18 @@
 
 ## გასწორება — ერთი ბრძანება (რეკომენდებული)
 
-cPanel → **Terminal**. `cd` არ გჭირდება — სკრიპტი თავად პოულობს ბოტს:
+> **სად უნდა გაუშვა:** cPanel-ის **Terminal**-ში (ან SSH-ით სერვერზე შესული).
+> **არა** Windows-ის PowerShell-ში ან CMD-ში — ბოტი სერვერზეა, არა შენს
+> კომპიუტერზე. PowerShell `bash`-ს ვერ იცნობს და `<` ოპერატორზე იგდებს
+> `The '<' operator is reserved for future use`.
+>
+> cPanel-ში Terminal: მთავარ გვერდზე ჩაწერე "Terminal" ძებნაში (სექცია
+> ADVANCED). თუ არ ჩანს, ჰოსტინგს სთხოვე ჩართვა, ან გამოიყენე SSH.
+
+`cd` არ გჭირდება — სკრიპტი თავად პოულობს ბოტს:
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/Kokrine/Kok-Car/claude/report-throwing-issue-smbnnn/deploy/autofix.sh")
+curl -fsSL -o autofix.sh "https://raw.githubusercontent.com/Kokrine/Kok-Car/claude/report-throwing-issue-smbnnn/deploy/autofix.sh" && bash autofix.sh
 ```
 
 აკეთებს: პოულობს ბოტის საქაღალდეს → შლის არასწორად დაყრილ ასლებს → არჩევს იმ
