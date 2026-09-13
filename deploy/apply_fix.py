@@ -178,11 +178,16 @@ def apply(path: str, edit: dict, dry_run: bool) -> str:
     return f"APPLIED  backup: {os.path.basename(backup)}"
 
 
+VERSION = "2026-09-13.2  (bot.py flags, carfax_web_api close, i18n {error})"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="show the diff only")
     ap.add_argument("directory", nargs="?", default=".", help="bot directory")
     opts = ap.parse_args()
+
+    print(f"apply_fix.py {VERSION}")
 
     results = []
     print(f"\n{'=' * 62}\ni18n.py: remove {{error}} from the message users see\n{'=' * 62}")
