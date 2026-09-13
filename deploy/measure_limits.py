@@ -77,7 +77,40 @@ def main() -> int:
     for pid, name, t, cmd in sorted(entries, key=lambda e: -e[2])[:8]:
         print(f"    pid {pid:>8}  {t:>3} threads  {name}  {cmd[:70]}")
 
+    # CloudLinux exposes the account's LVE limits here when readable. NPROC
+    # counts tasks - processes and threads together - which is what Chromium
+    # exhausts.
+    nproc_cap = None
+    lve_rows = []
+    try:
+        with open("/proc/lve/list") as fh:
+            lve_rows = [l.rstrip() for l in fh if l.strip()]
+    except OSError:
+        pass
+    if lve_rows:
+        print("\n/proc/lve/list (the account's real limits):")
+        header = lve_rows[0].replace("\t", " ").split()
+        for row in lve_rows[:12]:
+            print(f"    {row[:150]}")
+        uid = str(os.getuid())
+        for row in lve_rows[1:]:
+            cols = row.replace("\t", " ").split()
+            if cols and cols[0].split(":")[0] == uid:
+                for name, value in zip(header, cols):
+                    if "NPROC" in name.upper():
+                        try:
+                            nproc_cap = int(value)
+                        except ValueError:
+                            pass
+    else:
+        print("\n/proc/lve/list: not readable (normal on many hosts)")
+
     headroom_needed = max(60, chrome_threads or 60)
+    if nproc_cap:
+        print(f"\nNPROC cap        : {nproc_cap}")
+        print(f"headroom left    : {nproc_cap - threads} task(s)")
+        if nproc_cap - threads < headroom_needed:
+            print(f"    -> not enough for another Chromium ({headroom_needed} needed)")
     print(f"""
 {'=' * 62}
 WHAT THIS MEANS
@@ -96,11 +129,17 @@ Two ways out, and they combine:
 
 2. Ask the host to raise the account's process limit. Message to send:
 
-   "Hello - our account {USER} on {os.uname().nodename} hits the LVE NPROC
-    limit. A headless Chromium (Playwright) needs roughly {headroom_needed}
-    threads and fails with 'pthread_create: Resource temporarily
-    unavailable'. We currently use {procs} processes / {threads} threads.
-    Could you raise NPROC for this account, or tell us the current value?"
+   "Hello - our account {USER} on {os.uname().nodename} is hitting the LVE
+    NPROC limit. One headless Chromium (Playwright) alone uses
+    {chrome_threads} threads, and the account currently sits at {threads}
+    tasks across {procs} processes. When the browser needs another child
+    process it fails with 'pthread_create: Resource temporarily unavailable'
+    and the browser dies mid-request.
+    Could you tell us the current NPROC value for this account and raise it
+    to at least {max(200, threads * 2)}?"
+
+3. Free headroom yourself. Anything here that is not needed is worth
+   stopping - every process and thread counts against the same cap.
 """)
     return 0
 

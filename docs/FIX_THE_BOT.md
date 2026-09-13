@@ -133,14 +133,26 @@ Chromium უკვე მუშაობდა და ანგარიში�
 1. `_shared_browser.close()` — გასწორება 1 (ზემოთ);
 2. პროცესების ლიმიტი — ქვემოთ.
 
-### გაზომვა
+### გაზომილი მდგომარეობა (`measure_limits.py`, სერვერიდან)
 
-```bash
-python deploy/measure_limits.py
+```
+processes in use : 10
+threads in use   : 81
+Chromium         : 1 process, 59 threads     ← ერთი ბრაუზერი = 59
 ```
 
-მხოლოდ `/proc`-ს კითხულობს, არაფერს ქმნის — უსაფრთხოა მომუშავე ბოტზე.
-გამოიტანს რამდენი პროცესი/thread გიკავია და მზა ტექსტს ჰოსტინგისთვის.
+დანარჩენი: node driver 11, `bot.py` 3, `carfax_web_api.py` 2, `app.py` 1,
+`worker.py` 1, ორი `bash`.
+
+**ერთი Chromium იკავებს ანგარიშის budget-ის ორ მესამედზე მეტს.** მეორეს
+დასჭირდებოდა ~140 — ამიტომ ვერ გაეშვა.
+
+ეს ასევე ხსნის, რატომ კვდება ბრაუზერი დატვირთვისას: ხელთ დარჩენილი მარაგი
+ძალიან მცირეა, და როცა Chromium-ს ახალი renderer პროცესი სჭირდება (მეორე
+მომხმარებელი), ლიმიტს აწყდება და კვდება.
+
+ანგარიშის ნამდვილი ლიმიტი თუ იკითხება, სკრიპტი `/proc/lve/list`-იდან
+დაგიბეჭდავს.
 
 ### გამოსავალი
 
@@ -153,12 +165,16 @@ VINPRO_CDP_URL=http://127.0.0.1:<CDP_PORT>
 
 პორტს იპოვი: `grep -n "CDP_PORT" bot.py carfax_web_api.py | head`
 
-**ბ) შეამცირე Chromium-ის მადა** — `.env.vinpro`:
+**ბ) შეამცირე Chromium-ის მადა.** `.env.vinpro`:
 
 ```
 VINPRO_MAX_CONCURRENT_RENDERS=1
 VINPRO_LOW_MEMORY=1
+VINPRO_CHROMIUM_ARGS=--process-per-site --disable-features=site-per-process
 ```
+
+ასევე: `app.py` და `worker.py` თუ არ გჭირდება, გაჩერება ათავისუფლებს ადგილს —
+ყველა პროცესი და thread ერთსა და იმავე ლიმიტს ეთვლება.
 
 **გ) სთხოვე ჰოსტინგს NPROC-ის გაზრდა.** `measure_limits.py` მზა ტექსტს
 დაგიბეჭდავს ზუსტი ციფრებით.
