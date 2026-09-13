@@ -38,6 +38,12 @@ USER_FACING = {
 }
 # Variables that usually hold an exception.
 EXC_NAMES = {"e", "ex", "exc", "err", "error", "exception"}
+# Error text often arrives from elsewhere - a JSON response from the web API,
+# a dict from a helper - rather than from an `except` clause in this function.
+ERROR_KEYS = {
+    "error", "errors", "detail", "details", "message", "msg", "exception",
+    "traceback", "reason", "stderr",
+}
 
 # Words that must never reach a user: the source site's name or address.
 # Override with VINPRO_SCRUB_WORDS="word1,word2".
@@ -74,6 +80,19 @@ def _attr_chain(node: ast.AST) -> str:
     if isinstance(node, ast.Name):
         parts.append(node.id)
     return ".".join(reversed(parts))
+
+
+def _carries_error_text(expr: ast.AST) -> bool:
+    """True for things like data["error"], result.detail, resp["message"]."""
+    for node in ast.walk(expr):
+        if isinstance(node, ast.Subscript):
+            key = node.slice
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                if key.value.lower() in ERROR_KEYS:
+                    return True
+        if isinstance(node, ast.Attribute) and node.attr.lower() in ERROR_KEYS:
+            return True
+    return False
 
 
 def _blocked_in_call(call: ast.Call) -> str:
@@ -204,9 +223,11 @@ class BotVisitor(ast.NodeVisitor):
                     "remove it - users must not learn where the data comes from",
                 )
 
-        sends_exception = _mentions_exception(node) or any(
-            isinstance(a, ast.Name) and a.id in self.tainted
-            for a in list(node.args) + [k.value for k in node.keywords]
+        args = list(node.args) + [k.value for k in node.keywords]
+        sends_exception = (
+            _mentions_exception(node)
+            or any(isinstance(a, ast.Name) and a.id in self.tainted for a in args)
+            or any(_carries_error_text(a) for a in args)
         )
         if tail in USER_FACING and sends_exception:
             self._add(
@@ -251,7 +272,7 @@ class BotVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Assign(self, node):  # noqa: N802
-        if _mentions_exception_expr(node.value):
+        if _mentions_exception_expr(node.value) or _carries_error_text(node.value):
             for t in node.targets:
                 if isinstance(t, ast.Name):
                     self.tainted.add(t.id)
