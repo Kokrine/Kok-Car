@@ -41,6 +41,22 @@ if [ -z "${VIRTUAL_ENV:-}" ]; then
     yellow "    from Setup Python App first, otherwise pip installs may be lost."
 fi
 
+step "1b/6  Bot directory"
+BOT_SCRIPT_FOUND=""
+for f in bot.py main.py app.py run.py vinpro_bot.py; do
+    [ -f "$BOT_DIR/$f" ] && BOT_SCRIPT_FOUND="$f" && break
+done
+if [ -n "$BOT_SCRIPT_FOUND" ]; then
+    green "    found $BOT_DIR/$BOT_SCRIPT_FOUND"
+else
+    yellow "    No bot script found in $BOT_DIR."
+    yellow "    You are probably not in the bot's directory - vinpro/ must sit"
+    yellow "    NEXT TO the file that starts the bot, or Python will not import it."
+    yellow "    Find it with:"
+    yellow "      grep -rl --include='*.py' -e telegram -e playwright ~ 2>/dev/null | head"
+    yellow "    then cd there and re-run this script."
+fi
+
 step "2/6  Fetching vinpro/ module"
 if [ -d "$BOT_DIR/vinpro" ] && [ -f "$BOT_DIR/vinpro/browser_manager.py" ]; then
     green "    vinpro/ already present - refreshing"
@@ -65,8 +81,10 @@ fi
 if [ -d "$TMP/repo/vinpro" ]; then
     cp -r "$TMP/repo/vinpro" "$BOT_DIR/"
     mkdir -p "$BOT_DIR/deploy"
-    [ -f "$TMP/repo/deploy/keepalive.sh" ] && cp "$TMP/repo/deploy/keepalive.sh" "$BOT_DIR/deploy/"
-    chmod +x "$BOT_DIR/deploy/keepalive.sh" 2>/dev/null
+    for f in keepalive.sh probe_chromium.sh probe_chromium.py; do
+        [ -f "$TMP/repo/deploy/$f" ] && cp "$TMP/repo/deploy/$f" "$BOT_DIR/deploy/"
+    done
+    chmod +x "$BOT_DIR"/deploy/*.sh 2>/dev/null
     green "    installed $BOT_DIR/vinpro/"
 elif [ ! -f "$BOT_DIR/vinpro/browser_manager.py" ]; then
     note_fail "vinpro/ is missing and could not be fetched"
@@ -133,11 +151,28 @@ async def main():
 asyncio.run(main())
 PYEOF
 )"
-echo "$SMOKE_OUT" | tail -5
-if echo "$SMOKE_OUT" | grep -q SMOKE-OK; then
+SMOKE_LOG="$BOT_DIR/vinpro_smoke.log"
+printf '%s\n' "$SMOKE_OUT" > "$SMOKE_LOG"
+if printf '%s' "$SMOKE_OUT" | grep -q SMOKE-OK; then
     green "    browser launches and locators work"
 else
-    note_fail "smoke test did not pass - see the output above"
+    note_fail "smoke test did not pass"
+    yellow "    full output saved to $SMOKE_LOG"
+    printf '%s\n' "$SMOKE_OUT" | grep -vE '^\s*-? *\[pid=' | tail -30 | sed 's/^/    /'
+    step "5b/6  Chromium will not start - running the diagnostic probe"
+    yellow "    (this tries several launch configurations; it takes a minute)"
+    if [ -f "$BOT_DIR/deploy/probe_chromium.sh" ]; then
+        PROBE_LOG="$BOT_DIR/vinpro_probe.log"
+        VINPRO_PYTHON="$PY" bash "$BOT_DIR/deploy/probe_chromium.sh" 2>&1 | tee "$PROBE_LOG" | grep -vE '^\s*-? *\[pid='
+        yellow "    full probe output saved to $PROBE_LOG"
+        if grep -q "Working configuration" "$PROBE_LOG" 2>/dev/null; then
+            green "    a working configuration was found - see the block above"
+            green "    and copy those lines into $BOT_DIR/.env.vinpro"
+            FAILED=0
+        fi
+    else
+        yellow "    probe script missing - run deploy/probe_chromium.sh by hand"
+    fi
 fi
 
 step "6/6  Environment"

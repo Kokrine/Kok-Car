@@ -46,6 +46,16 @@ Configuration (environment variables):
     VINPRO_CHROMIUM_PATH            default '' - path to an existing Chromium
                                                  binary, for hosts where
                                                  `playwright install` is blocked
+    VINPRO_SINGLE_PROCESS           default 0  - 1 = run Chromium as a single
+                                                 process; needed where an LVE
+                                                 process limit kills the normal
+                                                 multi-process browser
+    VINPRO_LOW_MEMORY               default 0  - 1 = extra flags that trade
+                                                 speed for RAM
+    VINPRO_CHROMIUM_ARGS            default '' - extra flags, space separated
+
+Run `bash deploy/probe_chromium.sh` on the server to find out which of these
+this host needs.
 """
 
 from __future__ import annotations
@@ -92,16 +102,53 @@ NAV_TIMEOUT_MS = _env_int("VINPRO_NAV_TIMEOUT_MS", 60_000)
 HEADLESS = _env_bool("VINPRO_HEADLESS", True)
 CHROMIUM_PATH = os.environ.get("VINPRO_CHROMIUM_PATH", "").strip()
 
-# Chromium flags that matter on shared hosting: /dev/shm is tiny there, and
-# the sandbox is usually unavailable inside cPanel's restricted environment.
-LAUNCH_ARGS = [
-    "--no-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-gpu",
-    "--disable-extensions",
-    "--no-first-run",
-    "--disable-background-networking",
-]
+SINGLE_PROCESS = _env_bool("VINPRO_SINGLE_PROCESS", False)
+LOW_MEMORY = _env_bool("VINPRO_LOW_MEMORY", False)
+
+if SINGLE_PROCESS:
+    # --single-process Chromium serves exactly one context. Opening a second
+    # one kills the browser ("BrowserContext.new_page: Target page, context or
+    # browser has been closed"), so this mode only works with one throwaway
+    # browser per request, rendered one at a time.
+    if not FRESH_BROWSER_PER_REQUEST or MAX_CONCURRENT_RENDERS != 1:
+        log.warning(
+            "VINPRO_SINGLE_PROCESS=1 forces one browser per request and "
+            "one render at a time"
+        )
+    FRESH_BROWSER_PER_REQUEST = True
+    MAX_CONCURRENT_RENDERS = 1
+
+
+def _build_launch_args() -> list[str]:
+    """Chromium flags that matter on shared hosting.
+
+    /dev/shm is tiny there, the sandbox is unavailable inside cPanel's
+    restricted environment, and a CloudLinux LVE process limit can kill the
+    normal multi-process browser outright (it exits with SIGTRAP before any
+    page loads). Single-process mode fits inside such a limit.
+    """
+    args = [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-extensions",
+        "--no-first-run",
+        "--disable-background-networking",
+    ]
+    if SINGLE_PROCESS:
+        args += ["--single-process", "--no-zygote"]
+    if LOW_MEMORY:
+        args += [
+            "--disable-software-rasterizer",
+            "--renderer-process-limit=1",
+            "--js-flags=--max-old-space-size=256",
+        ]
+    args += os.environ.get("VINPRO_CHROMIUM_ARGS", "").split()
+    return args
+
+
+LAUNCH_ARGS = _build_launch_args()
 
 _CLOSED_MARKERS = (
     "has been closed",

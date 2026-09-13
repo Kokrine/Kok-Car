@@ -114,3 +114,49 @@ PYTHONPATH=. python tests/test_browser_manager.py
 `telegram_example.py`-ში კრედიტი ჩამოიჭრება **მხოლოდ მას შემდეგ**, რაც PDF
 რეალურად შეიქმნა. თუ ბოტში ეს პირიქითაა, გადაიტანე ჩამოჭრა `reply_document`-ის
 წინ, რომ შეცდომისას მომხმარებელს ბალანსი არ დაეკლოს.
+
+
+---
+
+# თუ Chromium არ ეშვება (SIGTRAP / SIGSEGV / smoke test failed)
+
+cPanel/CloudLinux-ზე Chromium ხშირად მაშინვე კვდება. სიმპტომი ერთია, მიზეზი —
+ოთხიდან ერთი. დიაგნოსტიკა:
+
+```bash
+cd ~/<ბოტის საქაღალდე>
+bash deploy/probe_chromium.sh
+```
+
+სკრიპტი აჩვენებს ანგარიშის ლიმიტებს, `ldd`-ით შეამოწმებს დაკარგულ
+ბიბლიოთეკებს და მიყოლებით გამოცდის Chromium-ის გაშვების 4 კონფიგურაციას.
+ბოლოს დაბეჭდავს **ზუსტად იმ ხაზებს**, რაც `.env.vinpro`-ში უნდა ჩასვა.
+
+| მიზეზი | როგორ ჩანს | გამოსავალი |
+|---|---|---|
+| აკლია სისტემური ბიბლიოთეკები | `ldd`-ში "not found" | ჰოსტინგს სთხოვე დაინსტალირება (შენ არ შეგიძლია shared-ზე) |
+| CloudLinux LVE პროცესების ლიმიტი | SIGTRAP მაშინვე გაშვებაზე | `VINPRO_SINGLE_PROCESS=1` |
+| მეხსიერების ლიმიტი | SIGKILL / OOM | `VINPRO_LOW_MEMORY=1` + `VINPRO_FRESH_BROWSER_PER_REQUEST=1` |
+| `/dev/shm` პატარაა | კრახი გვერდის ჩატვირთვისას | `--disable-dev-shm-usage` (უკვე ჩართულია) |
+
+## მნიშვნელოვანი: `VINPRO_SINGLE_PROCESS=1`-ის შეზღუდვა
+
+`--single-process` რეჟიმში Chromium მხოლოდ **ერთ context-ს** უძლებს — მეორის
+გახსნა კლავს ბრაუზერს იმავე შეცდომით (`BrowserContext.new_page: Target page,
+context or browser has been closed`). ამიტომ `browser_manager.py` ავტომატურად
+აიძულებს:
+
+```
+VINPRO_FRESH_BROWSER_PER_REQUEST=1
+VINPRO_MAX_CONCURRENT_RENDERS=1
+```
+
+ესე იგი რეპორტები რიგრიგობით დამუშავდება — ნელია, მაგრამ მუშაობს. ეს ქცევა
+გატესტილია `tests/test_browser_manager.py`-ით.
+
+## თუ არაფერი შველის
+
+Chromium shared hosting-ისთვის არ არის განკუთვნილი. თუ probe-მაც ვერ იპოვა
+სამუშაო კონფიგურაცია, ან ჰოსტინგმა ბიბლიოთეკების დაინსტალირებაზე უარი თქვა —
+ბოტი VPS-ზე უნდა გადავიდეს (ყველაზე იაფი $5/თვე საკმარისია). იქ ეს პრობლემა
+საერთოდ არ არსებობს.
