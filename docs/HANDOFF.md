@@ -40,6 +40,7 @@ Likely causes, in order:
 | `vinpro/telegram_example.py` | Reference handler wiring, including charging the credit only after the PDF exists. |
 | `vinpro/requirements.txt` | `playwright>=1.44`, `python-telegram-bot>=20.7`. |
 | `deploy/autofix.sh` | One command for everything automatable: locate the bot, clean up, install, probe Chromium, write `.env.vinpro`, report remaining edits. |
+| `deploy/collect_context.py` | Gathers the diagnosis into one pasteable file: host limits, `ldd` on every Chromium binary plus a direct `--version` run, and the code around each analyzer finding with tokens, passwords and cookies masked. |
 | `deploy/analyze_bot.py` | Parses the bot's source with `ast` and reports every lifecycle bug with line numbers: shared module-level browser, `launch()`, `close()`, `sync_playwright()` in an async bot, missing timeouts. |
 | `deploy/install_cpanel.sh` | Idempotent installer: fetch module, deps, Chromium, smoke test, write `.env.vinpro`. Runs the probe automatically when the browser will not start. |
 | `deploy/probe_chromium.sh` / `.py` | Diagnostic: account limits, `ldd` missing-library check, then four launch configurations until one renders a page; prints the exact `.env.vinpro` lines. |
@@ -89,7 +90,25 @@ there, because Chromium does not start yet (§5).
   `your OS is not officially supported ... fallback build for ubuntu24.04-x64`.
 * The smoke test failed: Chromium exits immediately,
   `process did exit: exitCode=null, signal=SIGTRAP`.
-* The bot's own source has **never been seen** — not in this repo, not shared.
+* Bot directory: **`/home/mycarge/telegram-carfax-bot-new`** — found
+  automatically by `autofix.sh`. Its Playwright code lives in `bot.py`,
+  `carfax_web_api.py` and `login_setup.py`.
+* `deploy/analyze_bot.py` reported 8 places to change, and they match the
+  diagnosis exactly:
+  * `bot.py:193` module-level browser variable (the shared browser)
+  * `bot.py:166` `chromium.launch()` at setup
+  * `bot.py:156` `_browser.close()`
+  * `carfax_web_api.py:102` `_shared_browser.close()` — the closest thing to
+    a smoking gun: a browser shared across requests, closed by one of them
+  * `login_setup.py:28/39` a second launch/close pair
+  * plus missing timeouts at `bot.py:626` and `login_setup.py:31`
+* **Chromium does not start in any of the four probed configurations.** Every
+  attempt launches a process that dies immediately
+  (`TargetClosedError: BrowserType.launch`, earlier `SIGTRAP`). The `ldd`
+  output that would say why has not been seen yet — the first autofix run
+  trimmed it away (since fixed).
+* The bot's source has still not been read directly; only the analyzer's
+  line numbers are known.
 
 ## 5. Open items, in order
 

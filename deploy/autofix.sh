@@ -157,7 +157,12 @@ else
     PROBE_LOG="$BOT_DIR/vinpro_probe.log"
     (cd "$BOT_DIR" && VINPRO_PYTHON="$PY" bash deploy/probe_chromium.sh) \
         > "$PROBE_LOG" 2>&1
-    grep -vE '^\s*-? *\[pid=' "$PROBE_LOG" | tail -40 | sed 's/^/      /'
+    # The head carries the limits and the ldd check - the parts that say
+    # WHY it will not start - so never let the tail crowd them out.
+    PROBE_CLEAN="$(grep -vE '^\s*-? *\[pid=' "$PROBE_LOG")"
+    printf '%s\n' "$PROBE_CLEAN" | sed -n '1,40p' | sed 's/^/      /'
+    printf '      ...\n'
+    printf '%s\n' "$PROBE_CLEAN" | tail -12 | sed 's/^/      /'
     if grep -q "Working configuration" "$PROBE_LOG"; then
         CHROMIUM_ENV="$(sed -n '/Add these lines/,/^====/p' "$PROBE_LOG" \
             | grep -E '^\s+VINPRO_' | sed 's/^[[:space:]]*//')"
