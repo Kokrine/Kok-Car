@@ -32,9 +32,11 @@ Why these two:
 from __future__ import annotations
 
 import argparse
+import ast
 import datetime
 import difflib
 import os
+import re
 import sys
 
 EDITS = [
@@ -80,6 +82,69 @@ EDITS = [
 ]
 
 
+# Message templates that must not carry the raw error. The placeholder is
+# filled with Playwright's own text, which names the site being scraped.
+ERROR_PLACEHOLDER_KEYS = ("report_failed",)
+PLACEHOLDER = re.compile(r"\s*[:\-\u2014]?\s*\{error\}")
+
+
+def fix_i18n(path: str, dry_run: bool) -> str:
+    """Strip {error} from user-facing templates, in every language.
+
+    Removing the placeholder is enough: str.format ignores an argument the
+    template no longer uses, so nothing that fills it needs to change.
+    """
+    if not os.path.exists(path):
+        return "MISSING  file not found"
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.readlines()
+
+    changed = 0
+    leftover = []
+    for i, line in enumerate(lines):
+        if any(f'"{key}"' in line or f"'{key}'" in line for key in ERROR_PLACEHOLDER_KEYS):
+            if "{error}" in line:
+                lines[i] = PLACEHOLDER.sub("", line)
+                changed += 1
+        elif "{error}" in line:
+            leftover.append((i + 1, line.strip()[:90]))
+
+    if changed == 0:
+        if leftover:
+            print("  no report_failed template with {error}; other templates use it:")
+            for n, text in leftover:
+                print(f"    line {n}: {text}")
+        return "SKIP     nothing to change"
+
+    updated = "".join(lines)
+    try:
+        ast.parse(updated, filename=path)
+    except SyntaxError as exc:
+        return f"ABORT    edit would break the file: {exc.msg}"
+
+    with open(path, encoding="utf-8") as fh:
+        original = fh.read()
+    print("".join(difflib.unified_diff(
+        original.splitlines(True), updated.splitlines(True),
+        fromfile=path, tofile=path + " (fixed)", n=1,
+    )))
+    if leftover:
+        print("  other templates still using {error} - review these by hand:")
+        for n, text in leftover:
+            print(f"    line {n}: {text}")
+
+    if dry_run:
+        return f"DRY-RUN  would fix {changed} template(s)"
+
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = f"{path}.bak-{stamp}"
+    with open(backup, "w", encoding="utf-8") as fh:
+        fh.write(original)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(updated)
+    return f"APPLIED  {changed} template(s), backup: {os.path.basename(backup)}"
+
+
 def apply(path: str, edit: dict, dry_run: bool) -> str:
     if not os.path.exists(path):
         return "MISSING  file not found"
@@ -120,6 +185,9 @@ def main() -> int:
     opts = ap.parse_args()
 
     results = []
+    print(f"\n{'=' * 62}\ni18n.py: remove {{error}} from the message users see\n{'=' * 62}")
+    results.append(("i18n.py", fix_i18n(os.path.join(opts.directory, "i18n.py"), opts.dry_run)))
+
     for edit in EDITS:
         path = os.path.join(opts.directory, edit["file"])
         print(f"\n{'=' * 62}\n{edit['file']}: {edit['what']}\n{'=' * 62}")

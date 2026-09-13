@@ -82,6 +82,20 @@ def _attr_chain(node: ast.AST) -> str:
     return ".".join(reversed(parts))
 
 
+def _fills_error_placeholder(call: ast.Call) -> bool:
+    """True for send(text=t(lang, "failed", error=<something>)).
+
+    Translation helpers hide the text in a catalog, so the message itself is
+    not visible here - but the keyword being filled says what it holds.
+    """
+    for node in ast.walk(call):
+        if isinstance(node, ast.Call) and node is not call:
+            for kw in node.keywords:
+                if kw.arg and kw.arg.lower() in ERROR_KEYS:
+                    return True
+    return False
+
+
 def _carries_error_text(expr: ast.AST) -> bool:
     """True for things like data["error"], result.detail, resp["message"]."""
     for node in ast.walk(expr):
@@ -228,6 +242,7 @@ class BotVisitor(ast.NodeVisitor):
             _mentions_exception(node)
             or any(isinstance(a, ast.Name) and a.id in self.tainted for a in args)
             or any(_carries_error_text(a) for a in args)
+            or _fills_error_placeholder(node)
         )
         if tail in USER_FACING and sends_exception:
             self._add(
@@ -294,7 +309,12 @@ def analyze_file(path: str) -> FileReport | None:
             source = fh.read()
     except OSError:
         return None
-    if "playwright" not in source and "Locator" not in source:
+    relevant = (
+        "playwright" in source
+        or "Locator" in source
+        or any(k in source for k in ("reply_text", "send_message", "edit_message_text"))
+    )
+    if not relevant:
         return None
     try:
         tree = ast.parse(source, filename=path)
