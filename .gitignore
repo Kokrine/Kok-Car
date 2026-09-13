@@ -1,3 +1,35 @@
 scrapes/*
 !scrapes/.gitkeep
 cars_list
+
+# ── Arcads skill pack ────────────────────────────────────────────────────────
+# Credentials and personal workspace context — never commit.
+.env
+.env.*
+!.env.example
+MASTER_CONTEXT.md
+.claude/settings.local.json
+.claude/worktrees/
+
+# Your reference media stays local; only the folder scaffolding is tracked.
+references/**
+!references/**/
+!references/README.md
+!references/.gitignore
+!references/**/.gitkeep
+
+# Generated creative output and the per-call audit log.
+outputs/
+output/
+logs/*.jsonl
+
+.DS_Store
+*.log
+__pycache__/
+*.pyc
+
+# Disposable one-off thumbnail iteration scripts (not the canonical skill script)
+scripts/generate-thumbnails.sh
+scripts/generate-thumbnails-*.sh
+scripts/generate-ab-variants*.sh
+scripts/regen-*.sh
