@@ -36,3 +36,28 @@
 
 
 Special thanks to Michael (https://github.com/Michael001154) for help developing the project
+
+---
+
+## VIN Report Bot — browser lifecycle fix
+
+If the Telegram bot answers with
+`Locator.count / Locator.wait_for: Target page, context or browser has been closed`,
+see **[docs/CPANEL_FIX.md](docs/CPANEL_FIX.md)** for the cause and the
+step-by-step cPanel deployment fix.
+
+* `vinpro/browser_manager.py` — per-request browser contexts, bounded
+  concurrency, health-checked browser, automatic retry on a dead browser.
+* `vinpro/telegram_example.py` — reference handler wiring.
+* `vinpro/requirements.txt` — bot-only dependencies (Playwright, PTB).
+
+## Scraper configuration
+
+`main.py` no longer stores credentials in the source file. Export them first:
+
+```
+export CARFAX_AUTH='<your authorization token>'
+export CARFAX_COOKIE='<optional cookie header>'
+export CAR_MAKE=Honda CAR_MODEL=Civic ZIP=10001
+python main.py
+```
