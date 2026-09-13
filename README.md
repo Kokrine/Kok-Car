@@ -61,6 +61,11 @@ export CARFAX_COOKIE='<optional cookie header>'
 export CAR_MAKE=Honda CAR_MODEL=Civic ZIP=10001
 python main.py
 ```
+* `deploy/autofix.sh` — **start here.** Finds the bot, installs everything,
+  gets Chromium working, and reports the lines still needing an edit.
+* `deploy/analyze_bot.py` — parses the bot's source and lists every browser
+  lifecycle bug with line numbers.
+* `deploy/probe_chromium.sh` — diagnoses a Chromium that will not start.
 * `deploy/install_cpanel.sh` — one-shot cPanel installer (fetch, deps,
   Chromium, smoke test, env file).
 * `deploy/keepalive.sh` — cron helper that restarts the bot if it died.

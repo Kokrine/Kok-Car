@@ -39,6 +39,8 @@ Likely causes, in order:
 | `vinpro/browser_manager.py` | The fix. One `BrowserContext` per request, semaphore-bounded concurrency, health-checked browser that relaunches when dead, retry limited to genuine "closed/crashed" errors. |
 | `vinpro/telegram_example.py` | Reference handler wiring, including charging the credit only after the PDF exists. |
 | `vinpro/requirements.txt` | `playwright>=1.44`, `python-telegram-bot>=20.7`. |
+| `deploy/autofix.sh` | One command for everything automatable: locate the bot, clean up, install, probe Chromium, write `.env.vinpro`, report remaining edits. |
+| `deploy/analyze_bot.py` | Parses the bot's source with `ast` and reports every lifecycle bug with line numbers: shared module-level browser, `launch()`, `close()`, `sync_playwright()` in an async bot, missing timeouts. |
 | `deploy/install_cpanel.sh` | Idempotent installer: fetch module, deps, Chromium, smoke test, write `.env.vinpro`. Runs the probe automatically when the browser will not start. |
 | `deploy/probe_chromium.sh` / `.py` | Diagnostic: account limits, `ldd` missing-library check, then four launch configurations until one renders a page; prints the exact `.env.vinpro` lines. |
 | `deploy/keepalive.sh` | Cron helper that restarts the bot when the process is gone. |
@@ -91,6 +93,19 @@ there, because Chromium does not start yet (§5).
 
 ## 5. Open items, in order
 
+**Steps 1, 2 and part of 4 are now automated.** On the server, one command
+does them: it finds the bot directory itself, removes the stray copy,
+installs the module and dependencies, gets Chromium working, writes
+`.env.vinpro`, and prints the exact lines of the bot that still need editing.
+
+```bash
+bash <(curl -fsSL "https://raw.githubusercontent.com/Kokrine/Kok-Car/claude/report-throwing-issue-smbnnn/deploy/autofix.sh")
+```
+
+Verified end to end against a simulated account, including the path where
+Chromium fails to start and the probe finds a working alternative. What
+follows is what those steps do, and what is left.
+
 1. **Locate the bot's directory.** The installer was run from `/home/mycarge`
    because `cd ~/vinpro-bot` failed, so `vinpro/` landed in
    `/home/mycarge/vinpro/`, where the bot cannot import it. Find the real
@@ -103,7 +118,9 @@ there, because Chromium does not start yet (§5).
    libraries are missing, they cannot be installed without root on shared
    hosting — the host must install them, or the bot moves to a VPS. If the
    probe finds a working configuration, copy its lines into `.env.vinpro`.
-3. **Edit the handler.** Nobody has done this yet and the installer cannot:
+3. **Edit the handler.** Still the one genuinely manual step, but no longer
+   guesswork: `deploy/analyze_bot.py` (run automatically by `autofix.sh`)
+   prints each offending line and what to do with it.
    remove every `chromium.launch()` / `browser.close()` from the VIN handler
    and call `render_with_retry(build_report, vin)` instead. Model it on
    `vinpro/telegram_example.py`.
