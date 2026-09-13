@@ -17,7 +17,8 @@ from playwright.async_api import Page
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
-from vinpro.browser_manager import is_closed_error, manager, render_with_retry
+from vinpro.browser_manager import manager, render_with_retry
+from vinpro.user_errors import log_message, user_message
 
 log = logging.getLogger(__name__)
 
@@ -54,24 +55,12 @@ async def handle_vin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     try:
         pdf_bytes = await render_with_retry(build_report, vin)
-    except LookupError:
-        await update.message.reply_text(
-            "ამ VIN-ზე ჩანაწერი ვერ მოიძებნა.\n\n"
-            "კრედიტი არ დაგჭირვებიათ - ბალანსი უცვლელია."
-        )
-        return
     except Exception as exc:  # noqa: BLE001 - user gets a message either way
-        # Log the real cause; the user sees a message they can act on.
-        log.exception("report failed for %s", vin)
-        if is_closed_error(exc):
-            text = (
-                "დროებითი ტექნიკური შეფერხება, სცადეთ ხელახლა 1-2 წუთში."
-            )
-        else:
-            text = "ვერ მოხერხდა რეპორტის მიღება, სცადეთ ხელახლა."
-        await update.message.reply_text(
-            f"{text}\n\nკრედიტი არ დაგჭირვებიათ - ბალანსი უცვლელია."
-        )
+        # The detail goes to the log, scrubbed; the user gets fixed text.
+        # Never send str(exc): Playwright errors carry the source URL, the
+        # CDP port, file paths and selectors.
+        log.error("report failed for %s: %s", vin, log_message(exc))
+        await update.message.reply_text(user_message(exc))
         return
 
     # Charge the credit only after the PDF actually exists.

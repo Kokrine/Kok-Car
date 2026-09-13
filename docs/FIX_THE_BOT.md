@@ -39,7 +39,34 @@ PASS  the browser survived, which is why the other user still got a PDF
 ბოლო ხაზი ხსნის მთავარ თავსატეხს: **ბრაუზერი ცოცხალი რჩება**, ამიტომ მეორე
 მომხმარებელს რეპორტი უწყვეტად მიდიოდა.
 
-## გასწორება 1 — `carfax_web_api.py` (მთავარი, 4 ხაზი)
+## გასწორება 0 — `bot.py`-ის დროშები (ყველაზე მძიმე)
+
+`bot.py`-ის `get_browser()`-ში:
+
+```python
+"--single-process",
+"--no-zygote",
+# --single-process და --no-zygote განზრახ მოხსნილია:
+# მათთან ერთი გვერდის ჩავარდნა მთელ ბრაუზერს კლავდა.
+```
+
+**კომენტარი ამბობს, რომ ეს დროშები მოხსნილია — მაგრამ ისინი ისევ სიაშია.**
+ვიღაცას მოხსნა უნდოდა და არ მოუხსნია.
+
+`--single-process` Chromium **მხოლოდ ერთ BrowserContext-ს უძლებს**. მეორე
+მომხმარებლის მოსვლისთანავე:
+
+```
+user B FAILED -> BrowserContext.new_page: Target page, context or browser has been closed
+user A DIED   -> Locator.count: Target page, context or browser has been closed
+browser connected = False
+```
+
+ორივე მომხმარებელი კარგავს ბრაუზერს. ეს **ზუსტად** შენი სქრინშოტია.
+გატესტილია: `tests/test_bot_args.py` — ძველი დროშებით მეორე მომხმარებელი
+კვდება, ახლით ორივე მუშაობს.
+
+## გასწორება 1 — `carfax_web_api.py` (4 ხაზი)
 
 ხაზები 100-105, შეცვალე ასე:
 
@@ -72,7 +99,7 @@ if _inflight > 0:
     return               # არ შეეხო ბრაუზერს, სანამ ვინმე იყენებს
 ```
 
-## გასწორება 3 — `vinpro` მოდულის ჩართვა
+## გასწორება 3 — `vinpro` მოდულის ჩართვა (არასავალდებულო)
 
 `browser_manager.py`-ს დაემატა **CDP რეჟიმი** სწორედ ამ არქიტექტურისთვის.
 `.env.vinpro`-ში:
@@ -97,6 +124,37 @@ pdf_bytes = await render_with_retry(build_report, vin)
 გატესტილია ნამდვილ CDP-ზე: 4 პარალელური რენდერი, reconnect რენდერის შუაში,
 და მფლობელის ბრაუზერი ხელუხლებელი — `tests/test_cdp_mode.py`,
 `tests/test_shared_close_bug.py`.
+
+## გასწორება 3.5 — შეცდომები არ უნდა ამხელდეს წყაროს
+
+სქრინშოტზე ბოტი ნედლ Playwright შეცდომას უგზავნის მომხმარებელს. ეს საშიშია:
+Playwright-ის ტექსტი ხშირად შეიცავს **იმ URL-ს, რომელზეც ნავიგაცია ხდებოდა**,
+CDP პორტს, ფაილურ გზებს და selector-ებს. ანუ `cargopolo`-ს სახელი და
+მისამართი ასე გაჟონავს.
+
+დაემატა `vinpro/user_errors.py`:
+
+```python
+from vinpro.user_errors import log_message, user_message
+
+except Exception as exc:
+    log.error("report failed: %s", log_message(exc))   # ლოგში — გაწმენდილი
+    await update.message.reply_text(user_message(exc)) # მომხმარებელს — ფიქსირებული
+```
+
+`user_message()` **არასდროს** აგებს ტექსტს შეცდომისგან — ირჩევს ოთხი
+ფიქსირებული პასუხიდან (დატვირთულია / დრო გავიდა / ვერ მოიძებნა / ზოგადი),
+თითოეული „კრედიტი არ ჩამოგეჭრათ"-ით.
+
+`scrub()` მეორე თავდაცვის ხაზია: შლის URL-ებს, დომენებს, IP:port-ს, ფაილურ
+გზებს, selector-ებს და blocklist-ის სიტყვებს. `cargopolo` სიაშია by default;
+დამატება: `VINPRO_SCRUB_WORDS=სიტყვა1,სიტყვა2`.
+
+გატესტილია `tests/test_user_errors.py`-ით 8 რეალურ შეცდომაზე — მათ შორის
+`page.goto: ... at https://www.cargopolo.com/ka/login`. ვერცერთმა ვერ გაჟონა.
+
+ადგილებს, სადაც ბოტი ჯერ კიდევ ნედლ შეცდომას აგზავნის, `analyze_bot.py`
+იპოვის `[LEAK]` ნიშნით.
 
 ## გასწორება 4 — `login_setup.py`
 

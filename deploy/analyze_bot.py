@@ -30,6 +30,15 @@ BROWSER_TYPES = {"chromium", "firefox", "webkit"}
 # Telegram handler parameters, used to tell a request handler from setup code.
 HANDLER_HINTS = {"update", "message", "callback_query", "context"}
 
+# Calls that put text in front of a user.
+USER_FACING = {
+    "reply_text", "reply_html", "reply_markdown", "send_message",
+    "edit_message_text", "edit_text", "answer", "answer_callback_query",
+    "reply_document", "reply_photo",
+}
+# Variables that usually hold an exception.
+EXC_NAMES = {"e", "ex", "exc", "err", "error", "exception"}
+
 
 @dataclass
 class Finding:
@@ -57,6 +66,22 @@ def _attr_chain(node: ast.AST) -> str:
     if isinstance(node, ast.Name):
         parts.append(node.id)
     return ".".join(reversed(parts))
+
+
+def _mentions_exception(call: ast.Call) -> bool:
+    """True when a user-facing call interpolates an exception into its text."""
+    for node in ast.walk(call):
+        if isinstance(node, ast.Name) and node.id in EXC_NAMES:
+            return True
+        if isinstance(node, ast.Call):
+            fn = _attr_chain(node.func)
+            if fn in ("str", "repr") or fn.endswith(".format_exc"):
+                for arg in node.args:
+                    if isinstance(arg, ast.Name) and arg.id in EXC_NAMES:
+                        return True
+                if fn.endswith(".format_exc"):
+                    return True
+    return False
 
 
 def _has_timeout(call: ast.Call) -> bool:
@@ -138,6 +163,15 @@ class BotVisitor(ast.NodeVisitor):
                     "delete this; only manager.shutdown() closes the browser",
                 )
 
+        if tail in USER_FACING and _mentions_exception(node):
+            self._add(
+                node.lineno,
+                "LEAK",
+                f"{tail}() sends the raw error text to the user - it can "
+                "carry the source URL, ports and file paths",
+                "send vinpro.user_errors.user_message(exc) instead",
+            )
+
         if tail in {"wait_for", "wait_for_selector", "goto", "click", "inner_text"}:
             if not _has_timeout(node):
                 self._add(
@@ -217,7 +251,7 @@ def walk(root: str) -> list[FileReport]:
     return reports
 
 
-ORDER = ["SYNTAX", "LAUNCH", "CLOSE", "SYNC-API", "NO-TIMEOUT"]
+ORDER = ["SYNTAX", "LAUNCH", "CLOSE", "LEAK", "SYNC-API", "NO-TIMEOUT"]
 
 
 def main() -> int:
@@ -248,8 +282,25 @@ def main() -> int:
             print("  uses Playwright, nothing to change")
 
     print("\n" + "=" * 64)
+    kinds = {f.kind for rep in reports for f in rep.findings}
     if total:
         print(f"{total} place(s) to change.")
+        if "LEAK" in kinds:
+            print()
+            print("Error text reaching users - replace with fixed messages:")
+            print()
+            print("    from vinpro.user_errors import log_message, user_message")
+            print()
+            print("    except Exception as exc:")
+            print("        log.error(\"report failed: %s\", log_message(exc))")
+            print("        await update.message.reply_text(user_message(exc))")
+            print()
+            print("Raw Playwright errors carry the source URL, ports, paths")
+            print("and selectors. user_message() never derives from them.")
+        if not (kinds & {"LAUNCH", "CLOSE", "SYNC-API"}):
+            print("=" * 64)
+            return 1
+        print()
         print("Replace the launch/close code with:")
         print()
         print("    from vinpro.browser_manager import render_with_retry")
