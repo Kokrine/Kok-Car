@@ -53,6 +53,12 @@ Configuration (environment variables):
     VINPRO_LOW_MEMORY               default 0  - 1 = extra flags that trade
                                                  speed for RAM
     VINPRO_CHROMIUM_ARGS            default '' - extra flags, space separated
+    VINPRO_CDP_URL                  default '' - attach to a browser someone
+                                                 else launched, e.g.
+                                                 http://127.0.0.1:9222 . In
+                                                 this mode the browser is
+                                                 NEVER closed here: it is not
+                                                 ours to close.
 
 Run `bash deploy/probe_chromium.sh` on the server to find out which of these
 this host needs.
@@ -101,11 +107,16 @@ FRESH_BROWSER_PER_REQUEST = _env_bool("VINPRO_FRESH_BROWSER_PER_REQUEST", False)
 NAV_TIMEOUT_MS = _env_int("VINPRO_NAV_TIMEOUT_MS", 60_000)
 HEADLESS = _env_bool("VINPRO_HEADLESS", True)
 CHROMIUM_PATH = os.environ.get("VINPRO_CHROMIUM_PATH", "").strip()
+# When set, attach to an already-running browser over CDP instead of
+# launching one. Closing a browser reached this way would tear down every
+# other request using it - exactly the bug this module exists to fix - so in
+# CDP mode nothing here ever calls browser.close().
+CDP_URL = os.environ.get("VINPRO_CDP_URL", "").strip()
 
 SINGLE_PROCESS = _env_bool("VINPRO_SINGLE_PROCESS", False)
 LOW_MEMORY = _env_bool("VINPRO_LOW_MEMORY", False)
 
-if SINGLE_PROCESS:
+if SINGLE_PROCESS and not CDP_URL:
     # --single-process Chromium serves exactly one context. Opening a second
     # one kills the browser ("BrowserContext.new_page: Target page, context or
     # browser has been closed"), so this mode only works with one throwaway
@@ -136,7 +147,7 @@ def _build_launch_args() -> list[str]:
         "--no-first-run",
         "--disable-background-networking",
     ]
-    if SINGLE_PROCESS:
+    if SINGLE_PROCESS and not CDP_URL:
         args += ["--single-process", "--no-zygote"]
     if LOW_MEMORY:
         args += [
@@ -187,6 +198,9 @@ class BrowserManager:
     async def _launch(self) -> Browser:
         if self._playwright is None:
             self._playwright = await async_playwright().start()
+        if CDP_URL:
+            log.info("attaching to an existing browser over CDP at %s", CDP_URL)
+            return await self._playwright.chromium.connect_over_cdp(CDP_URL)
         log.info(
             "launching chromium (headless=%s, executable=%s)",
             HEADLESS,
@@ -218,11 +232,16 @@ class BrowserManager:
         """Force the next request to start from a freshly launched browser."""
         async with self._lock:
             browser, self._browser = self._browser, None
-            if browser is not None:
-                try:
-                    await browser.close()
-                except Exception:  # noqa: BLE001
-                    pass
+            if browser is None:
+                return
+            if CDP_URL:
+                # Someone else owns this browser. Let go of the reference and
+                # reconnect next time; closing it would kill their requests.
+                return
+            try:
+                await browser.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     @asynccontextmanager
     async def page(self, **context_kwargs: Any) -> AsyncIterator[Page]:
@@ -233,7 +252,7 @@ class BrowserManager:
         """
         async with self._semaphore:
             own_browser: Browser | None = None
-            if FRESH_BROWSER_PER_REQUEST:
+            if FRESH_BROWSER_PER_REQUEST and not CDP_URL:
                 browser = own_browser = await self._launch()
             else:
                 browser = await self._get_browser()
@@ -259,7 +278,11 @@ class BrowserManager:
                         pass
 
     async def shutdown(self) -> None:
-        """Call once when the bot stops (e.g. Application.post_shutdown)."""
+        """Call once when the bot stops (e.g. Application.post_shutdown).
+
+        In CDP mode this releases our connection but leaves the browser
+        running, since another process launched it.
+        """
         await self.drop_browser()
         async with self._lock:
             if self._playwright is not None:
