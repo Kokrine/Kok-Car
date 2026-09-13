@@ -5,7 +5,9 @@ the previous conversation.
 
 **Repository:** `Kokrine/Kok-Car`
 **Working branch:** `claude/report-throwing-issue-smbnnn` (3 commits, pushed)
-**Status:** fix written and tested locally; **not yet working on the server**
+**Status:** the two code fixes are applied on the server (backups
+`*.bak-20260913-203720`), **but the services have not been restarted**, so
+they are not yet in effect. One error-text leak remains at `bot.py:1321`.
 
 ---
 
@@ -109,6 +111,23 @@ there, because Chromium does not start yet (§5).
   trimmed it away (since fixed).
 * The bot's source has still not been read directly; only the analyzer's
   line numbers are known.
+
+## 4b. Applied on the server, 2026-09-13
+
+* `bot.py` — `--single-process` / `--no-zygote` removed, replaced with
+  `--renderer-process-limit=1` and `--process-per-site`. This was the main
+  bug: a single-process Chromium serves one BrowserContext, so the second
+  user's context killed the browser and the first user's report with it.
+* `carfax_web_api.py` — the reconnect path no longer calls
+  `_shared_browser.close()`, which closed every page created through that
+  CDP connection.
+* Neither is live: `bot.py` (pid 3350313) and `carfax_web_api.py` (pid
+  1341989) still run the old code. `app.py` and `worker.py` also run on this
+  account and count against the same NPROC cap.
+* Rollback if the browser fails to start after the restart:
+  `cp bot.py.bak-20260913-203720 bot.py`
+* Still open: `bot.py:1321` sends raw error text to users via
+  `send_message()`; replace with `vinpro.user_errors.user_message(exc)`.
 
 ## 5. Open items, in order
 
