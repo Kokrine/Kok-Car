@@ -43,6 +43,9 @@ Configuration (environment variables):
                                                  memory-limited cPanel hosts)
     VINPRO_NAV_TIMEOUT_MS           default 60000
     VINPRO_HEADLESS                 default 1
+    VINPRO_CHROMIUM_PATH            default '' - path to an existing Chromium
+                                                 binary, for hosts where
+                                                 `playwright install` is blocked
 """
 
 from __future__ import annotations
@@ -87,6 +90,7 @@ MAX_CONCURRENT_RENDERS = max(1, _env_int("VINPRO_MAX_CONCURRENT_RENDERS", 1))
 FRESH_BROWSER_PER_REQUEST = _env_bool("VINPRO_FRESH_BROWSER_PER_REQUEST", False)
 NAV_TIMEOUT_MS = _env_int("VINPRO_NAV_TIMEOUT_MS", 60_000)
 HEADLESS = _env_bool("VINPRO_HEADLESS", True)
+CHROMIUM_PATH = os.environ.get("VINPRO_CHROMIUM_PATH", "").strip()
 
 # Chromium flags that matter on shared hosting: /dev/shm is tiny there, and
 # the sandbox is usually unavailable inside cPanel's restricted environment.
@@ -136,10 +140,17 @@ class BrowserManager:
     async def _launch(self) -> Browser:
         if self._playwright is None:
             self._playwright = await async_playwright().start()
-        log.info("launching chromium (headless=%s)", HEADLESS)
-        return await self._playwright.chromium.launch(
-            headless=HEADLESS, args=LAUNCH_ARGS
+        log.info(
+            "launching chromium (headless=%s, executable=%s)",
+            HEADLESS,
+            CHROMIUM_PATH or "bundled",
         )
+        launch_kwargs: dict[str, Any] = {"headless": HEADLESS, "args": LAUNCH_ARGS}
+        if CHROMIUM_PATH:
+            # Shared hosts often block `playwright install`; point at a
+            # system Chromium instead of the bundled download.
+            launch_kwargs["executable_path"] = CHROMIUM_PATH
+        return await self._playwright.chromium.launch(**launch_kwargs)
 
     async def _get_browser(self) -> Browser:
         """Return a live browser, relaunching it if the previous one died."""

@@ -61,3 +61,8 @@ export CARFAX_COOKIE='<optional cookie header>'
 export CAR_MAKE=Honda CAR_MODEL=Civic ZIP=10001
 python main.py
 ```
+* `deploy/install_cpanel.sh` — one-shot cPanel installer (fetch, deps,
+  Chromium, smoke test, env file).
+* `deploy/keepalive.sh` — cron helper that restarts the bot if it died.
+* `tests/test_browser_manager.py` — kills the browser mid-render and checks
+  the request still completes.

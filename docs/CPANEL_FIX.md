@@ -21,15 +21,27 @@
 | **Passenger / LiteSpeed worker-ის გადატვირთვა** | cPanel "Setup Python App" idle worker-ს კლავს — მასთან ერთად კვდება child Chromium-იც, სწორედ რენდერის შუაში |
 | **Carfax სესია ერთია** | მეორე login პირველს აგდებს |
 
-## გასწორება — რა ატვირთო cPanel-ში
+## გასწორება — ავტომატური ინსტალაცია
 
-ამ რეპოში დამატებულია მზა მოდული: **`vinpro/browser_manager.py`**.
+cPanel → **Terminal** (ან SSH), გადადი ბოტის საქაღალდეში და გაუშვი:
 
-1. **ატვირთე `vinpro/` საქაღალდე** ბოტის root-ში (File Manager → Upload, ან
-   `git pull` თუ სერვერზე git გაქვს).
+```bash
+cd ~/vinpro-bot          # შენი ბოტის საქაღალდე
+source /home/USER/virtualenv/vinpro-bot/3.11/bin/activate   # Setup Python App გაჩვენებს ზუსტ ბრძანებას
+curl -fsSL -o install_cpanel.sh \
+  "https://raw.githubusercontent.com/Kokrine/Kok-Car/claude/report-throwing-issue-smbnnn/deploy/install_cpanel.sh"
+bash install_cpanel.sh
+```
 
-2. **დააინსტალირე დამოკიდებულებები** (Terminal ან "Setup Python App" → Run
-   pip install):
+სკრიპტი თავად: ჩამოტვირთავს `vinpro/` მოდულს, დააინსტალირებს Playwright-სა და
+Chromium-ს (თუ ჰოსტინგი ბლოკავს — მოძებნის სისტემურ Chromium-ს), გაუშვებს smoke
+ტესტს და შექმნის `.env.vinpro`-ს სწორი პარამეტრებით. ხელახლა გაშვება უსაფრთხოა.
+
+## გასწორება — ხელით (თუ Terminal არ გაქვს)
+
+1. **ატვირთე `vinpro/` საქაღალდე** ბოტის root-ში (File Manager → Upload).
+
+2. **დააინსტალირე დამოკიდებულებები** ("Setup Python App" → Run pip install):
    ```
    pip install -r vinpro/requirements.txt
    python -m playwright install chromium
@@ -65,6 +77,7 @@
    | `VINPRO_FRESH_BROWSER_PER_REQUEST` | `1` | თუ RAM ცოტაა — ყოველ მოთხოვნაზე ახალი ბრაუზერი (ნელია, მაგრამ უტყუარი) |
    | `VINPRO_NAV_TIMEOUT_MS` | `60000` | ნავიგაციის timeout |
    | `VINPRO_HEADLESS` | `1` | headless რეჟიმი |
+   | `VINPRO_CHROMIUM_PATH` | ცარიელი | სისტემური Chromium-ის გზა, თუ `playwright install` დაბლოკილია |
 
 5. **გაუშვი ბოტი მუდმივ პროცესად, არა Passenger-ის ქვეშ.**
    ეს ყველაზე მნიშვნელოვანი ნაბიჯია cPanel-ზე. Passenger idle worker-ს კლავს
@@ -77,6 +90,17 @@
    * ან, თუ ჰოსტინგი უშვებს, **supervisord** / `screen` / `tmux`.
 
 ## შემოწმება
+
+მოდული გატესტილია ორივე რეჟიმში (საერთო ბრაუზერი და ახალი ბრაუზერი ყოველ
+მოთხოვნაზე) — ტესტი რეპოშია:
+
+```bash
+PYTHONPATH=. python tests/test_browser_manager.py
+```
+
+ის სპეციალურად კლავს ბრაუზერს რენდერის შუაში, იმავე
+`Locator.count: Target page, context or browser has been closed` შეცდომას იღებს
+და ამოწმებს, რომ მოთხოვნა მაინც წარმატებით სრულდება.
 
 გასწორების შემდეგ სცადეთ ორი VIN **ერთდროულად**, ორი სხვადასხვა ანგარიშიდან —
 სწორედ ეს სცენარი ტეხდა ბოტს. ორივეს უნდა მოუვიდეს PDF (თანმიმდევრულად, თუ
